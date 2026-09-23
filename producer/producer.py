@@ -1,6 +1,5 @@
 """Replays a CSV into Kafka in event-time order.
-L1: python producer.py --csv part_A.csv --start-at 14:30:00
-L2: python producer.py --csv part_B.csv --start-at 14:30:00"""
+L1: python producer.py --csv data/transactions.csv --start-at 14:30:00"""
 import argparse
 import csv
 import json
@@ -9,14 +8,14 @@ from datetime import datetime
 
 from confluent_kafka import Producer
 
-BOOTSTRAP = "10.147.17.11:9092,10.147.17.12:9092,10.147.17.13:9092"  # <-- ZeroTier IPs of L1, L2, L3 VMs
+BOOTSTRAP = "10.147.17.12:9092,10.147.17.13:9092"  # <-- ZeroTier IPs of L2, L3 VMs (the Kafka brokers)
 TOPIC = "transactions"
-DATA_START = datetime(2026, 10, 5, 10, 0, 0)  # same for both producers
+DATA_START = datetime(2026, 10, 5, 10, 0, 0)  # matches the CSV's event_time column
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--csv", required=True)
 ap.add_argument("--speedup", type=float, default=1.0)
-ap.add_argument("--start-at", help="wall-clock HH:MM:SS so both producers start together")
+ap.add_argument("--start-at", help="wall-clock HH:MM:SS -- gives L2/L3/L4 time to be up before the replay begins")
 a = ap.parse_args()
 
 rows = list(csv.DictReader(open(a.csv)))

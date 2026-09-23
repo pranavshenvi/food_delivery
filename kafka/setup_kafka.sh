@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Usage on L1/L2/L3 VM:  bash setup_kafka.sh 1   (2 on L2, 3 on L3). Run from this folder.
+# Usage on L2/L3 VM only:  bash setup_kafka.sh 2   (3 on L3). L1 and L4 do not run Kafka. Run from this folder.
 set -e
-N=$1; KV=3.8.1; CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk   # same cluster id on all 3
-[ -z "$N" ] && { echo "usage: bash setup_kafka.sh <1|2|3>"; exit 1; }
+N=$1; KV=3.8.1; CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk   # same cluster id on both nodes
+[ -z "$N" ] && { echo "usage: bash setup_kafka.sh <2|3>"; exit 1; }
 sudo apt-get update && sudo apt-get install -y openjdk-17-jre-headless wget
 if [ ! -d /opt/kafka ]; then
   wget -q https://archive.apache.org/dist/kafka/$KV/kafka_2.13-$KV.tgz

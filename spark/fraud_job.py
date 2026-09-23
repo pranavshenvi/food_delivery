@@ -1,18 +1,16 @@
-"""L4: python fraud_job.py   (rules.py must be in the same folder)"""
-import os
+"""L4: python fraud_job.py   (rules.py must be in the same folder)
+Streaming Spark: reads raw txns from `transactions`, detects fraud, republishes alerts onto
+`flagged_transactions` for L1 to pick up as a batch job once the run is done."""
 import time
 
 import pandas as pd
-import psycopg2
 import pyspark
-from psycopg2.extras import execute_values
 from pyspark.sql import SparkSession, functions as F
 from pyspark.sql.streaming.state import GroupStateTimeout
 
 from rules import CardHistory
 
-BOOTSTRAP = "10.147.17.11:9092,10.147.17.12:9092,10.147.17.13:9092"  # <-- ZeroTier IPs of L1, L2, L3 VMs
-PG = "host=10.147.17.13 port=5432 dbname=fraud user=fraud password=fraud"  # <-- L3 VM
+BOOTSTRAP = "10.147.17.12:9092,10.147.17.13:9092"  # <-- ZeroTier IPs of L2, L3 VMs (the Kafka brokers)
 CHECKPOINT = "./checkpoint"
 
 TXN_SCHEMA = ("txn_id STRING, card_id INT, amount DOUBLE, merchant STRING, city STRING, "
@@ -40,23 +38,18 @@ def build_alerts(txns):
                                     outputMode="append", timeoutConf=GroupStateTimeout.NoTimeout))
 
 
-def upsert(df, batch_id):
-    rows = [tuple(r) for r in df.collect()]
-    new = []
+def republish(df, batch_id):
+    rows = df.collect()
     if rows:
-        conn = psycopg2.connect(PG)
-        try:
-            with conn, conn.cursor() as cur:
-                new = execute_values(cur, "INSERT INTO alerts (alert_id, rule, card_id, txn_id, event_time, details) "
-                                          "VALUES %s ON CONFLICT (alert_id) DO NOTHING RETURNING alert_id",
-                                     rows, fetch=True)
-        finally:
-            conn.close()
-    dup = len(rows) - len(new)
-    print(f"{time.strftime('%H:%M:%S')} Batch {batch_id}: {len(rows)} alerts"
-          + (f" ({dup} already in Postgres, skipped)" if dup else ""))
+        (df.select(F.col("card_id").cast("string").alias("key"),
+                    F.to_json(F.struct(*ALERT_COLS)).alias("value"))
+           .write.format("kafka")
+           .option("kafka.bootstrap.servers", BOOTSTRAP)
+           .option("topic", "flagged_transactions")
+           .save())
+    print(f"{time.strftime('%H:%M:%S')} Batch {batch_id}: {len(rows)} alerts")
     for r in rows:
-        print(f"    ALERT {r[0]:<12} card {r[2]}  event {r[4][11:19]}  {r[5]}")
+        print(f"    ALERT {r['alert_id']:<12} card {r['card_id']}  event {r['event_time'][11:19]}  {r['details']}")
 
 
 def main():
@@ -68,7 +61,7 @@ def main():
              .config("spark.ui.showConsoleProgress", "false")
              .getOrCreate())
     spark.sparkContext.setLogLevel("WARN")
-    spark.sparkContext.addPyFile(os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules.py"))
+    spark.sparkContext.addPyFile("rules.py")
 
     raw = (spark.readStream.format("kafka")
            .option("kafka.bootstrap.servers", BOOTSTRAP)
@@ -78,7 +71,7 @@ def main():
     txns = raw.select(F.from_json(F.col("value").cast("string"), TXN_SCHEMA).alias("t")).select("t.*")
 
     q = (build_alerts(txns).writeStream
-         .foreachBatch(upsert)
+         .foreachBatch(republish)
          .option("checkpointLocation", CHECKPOINT)
          .trigger(processingTime="5 seconds")
          .start())
