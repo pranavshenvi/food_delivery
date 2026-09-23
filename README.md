@@ -100,12 +100,24 @@ data produced after it started.
 
 ## Failure drills (during the run)
 
-- **Broker kill**, on L2 or L3 mid-produce or mid-batch-read: `pkill -9 -f kafka.Kafka`. Whichever
-  Spark/producer job is talking to Kafka at that moment logs errors/retries and (if `acks=all` /
-  `min.insync.replicas=1` are satisfied by the remaining broker) carries on. Note: with only 2
-  Kafka nodes, killing either one **does** lose controller quorum (2-of-2), unlike a 3-node cluster
-  which survives losing 1 -- worth calling out explicitly during the demo as the tradeoff of
-  splitting Kafka duty across only 2 laptops.
+- **Broker kill**, on L2 or L3 mid-produce or mid-batch-read: `pkill -9 -f kafka.Kafka`. What
+  happens next is partition-specific, not "the cluster carries on" -- this is worth demoing
+  explicitly:
+  - Each topic has 4 partitions, replication factor 2 -- with only 2 brokers, *every* partition's
+    data lives on *both* brokers (there's nowhere else to put a second copy). What actually splits
+    2-and-2 across L2/L3 is partition **leadership**, decided at topic-creation time.
+  - `controller.quorum.voters` has exactly 2 entries. KRaft needs a strict majority to commit a
+    metadata change, and majority of 2 is 2 -- so losing *either* controller leaves the survivor
+    unable to commit anything, including electing a new leader for the dead broker's partitions.
+  - Net effect: the ~2 partitions the *surviving* broker was already leading keep working
+    immediately (no election needed). The ~2 partitions the *dead* broker was leading go
+    leaderless and stay stuck -- producers/Spark get errors on just those partitions -- until the
+    dead broker comes back and 2-of-2 quorum is restored. The survivor does **not** get promoted
+    to cover them; that promotion itself needs a controller-quorum commit that isn't reachable.
+  - To see it live: kill L2, then run `kafka-topics.sh --describe --topic transactions` against
+    L3 -- 2 partitions will still show a leader, 2 will show `Leader: -1` (none) or unavailable.
+    Compare that to what a 3-node cluster (majority = 2 of 3) would do: it survives losing any
+    single node and re-elects. That contrast is the actual point of this drill.
 - **Rerunning a batch job**: if `fraud_job.py` or `batch_job.py` is interrupted partway, just rerun
   it -- each is a full, fresh read of its input topic's current offset range. The one thing to
   watch: rerunning `fraud_job.py` after a prior successful run will **re-publish duplicate alert
