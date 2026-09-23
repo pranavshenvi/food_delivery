@@ -8,8 +8,8 @@ from confluent_kafka.admin import AdminClient, NewTopic
 BOOTSTRAP = "10.147.17.12:9092,10.147.17.13:9092"  # <-- ZeroTier IPs of L2, L3 VMs (the Kafka brokers)
 
 TOPICS = [
-    NewTopic("transactions", num_partitions=6, replication_factor=2, config={"min.insync.replicas": "1"}),
-    NewTopic("flagged_transactions", num_partitions=3, replication_factor=2, config={"min.insync.replicas": "1"}),
+    NewTopic("transactions", num_partitions=4, replication_factor=2, config={"min.insync.replicas": "1"}),
+    NewTopic("flagged_transactions", num_partitions=4, replication_factor=2, config={"min.insync.replicas": "1"}),
 ]
 
 admin = AdminClient({"bootstrap.servers": BOOTSTRAP})
