@@ -10,7 +10,7 @@ from pyspark.sql import SparkSession, functions as F
 
 from rules import CardHistory
 
-BOOTSTRAP = "10.147.17.12:9092,10.147.17.13:9092"  # <-- ZeroTier IPs of L2, L3 VMs (the Kafka brokers)
+BOOTSTRAP = "172.22.134.139:9092,172.22.114.189:9092"  # <-- the two Kafka brokers
 
 TXN_SCHEMA = ("txn_id STRING, card_id INT, amount DOUBLE, merchant STRING, city STRING, "
               "lat DOUBLE, lon DOUBLE, event_time STRING")

@@ -8,14 +8,14 @@ from datetime import datetime
 
 from confluent_kafka import Producer
 
-BOOTSTRAP = "10.147.17.12:9092,10.147.17.13:9092"  # <-- ZeroTier IPs of L2, L3 VMs (the Kafka brokers)
+BOOTSTRAP = "172.22.134.139:9092,172.22.114.189:9092"  # <-- the two Kafka brokers
 TOPIC = "transactions"
 DATA_START = datetime(2026, 10, 5, 10, 0, 0)  # matches the CSV's event_time column
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--csv", required=True)
 ap.add_argument("--speedup", type=float, default=1.0)
-ap.add_argument("--start-at", help="wall-clock HH:MM:SS -- gives L2/L3/L4 time to be up before the replay begins")
+ap.add_argument("--start-at", help="wall-clock HH:MM:SS -- gives the brokers time to be up before the replay begins")
 a = ap.parse_args()
 
 rows = list(csv.DictReader(open(a.csv)))

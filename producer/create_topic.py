@@ -1,11 +1,11 @@
-"""Run once from L1 after both brokers are up.  --reset deletes both topics first (between practice runs).
-Creates `transactions` (raw feed, L1 -> L4) and `flagged_transactions` (alerts, L4 -> L1)."""
+"""Run once from the producer laptop after both brokers are up.  --reset deletes both topics first (between practice runs).
+Creates `transactions` (raw feed, producer -> Spark) and `flagged_transactions` (alerts, Spark -> producer laptop)."""
 import sys
 import time
 
 from confluent_kafka.admin import AdminClient, NewTopic
 
-BOOTSTRAP = "10.147.17.12:9092,10.147.17.13:9092"  # <-- ZeroTier IPs of L2, L3 VMs (the Kafka brokers)
+BOOTSTRAP = "172.22.134.139:9092,172.22.114.189:9092"  # <-- the two Kafka brokers
 
 TOPICS = [
     NewTopic("transactions", num_partitions=4, replication_factor=2, config={"min.insync.replicas": "1"}),

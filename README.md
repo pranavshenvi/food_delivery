@@ -1,133 +1,101 @@
-# Kafka + Spark Card-Fraud Pipeline — Runbook (VM version, 4-laptop split)
+# Kafka Broker-Failover Demo — Runbook (VM version, 3-laptop split)
 
 Each laptop runs one Ubuntu VM (22.04/24.04). Everything below runs **inside the VMs**.
 
-This is a restructured version of the original assignment, rebalanced so each of the 4 laptops
-does a comparable amount of work, scoped down after faculty feedback that streaming + a broker
-cluster + everything else was too much for one assignment. The demo now covers: distributed Kafka
-(2-broker cluster, 4 partitions per topic split across both brokers), and **batch** Spark, run
-twice, once on each end of the pipe. No Structured Streaming, no checkpointing -- both Spark jobs
-read a fixed offset range (earliest..latest) and exit when done.
-Postgres has been dropped -- results live entirely in Kafka + a Spark-written CSV report, so
-`postgres/` and `ta/verify.py` are **not used** in this flow (kept only for reference).
+The point of this setup is one thing: **kill a broker and watch the controller elect new leaders for
+its partitions.** The original 4-laptop Kafka + Spark fraud pipeline is still in the repo, but this
+runbook only covers the 3 laptops that exist now: the Kafka cluster and the producer.
+Postgres has been dropped, so `postgres/` and `ta/verify.py` are **not used** (kept for reference).
 
-## Pipeline shape
+## Cluster shape
 
-```
-L1 (producer) --> transactions topic --> L4 (batch Spark #1, detects fraud)
-    (via L2, L3 brokers)                        |
-                                                 v
-L1 (batch Spark #2, summarizes) <-- flagged_transactions topic <-- L4 (republishes alerts)
-    (via L2, L3 brokers)
-```
+| Laptop | IP | Runs | Kafka node |
+|---|---|---|---|
+| A | 172.22.134.139 | Kafka **broker + controller** | node 1 (`kafka/server-node1.properties`) |
+| B | 172.22.114.189 | Kafka **broker only** | node 2 (`kafka/server-node2.properties`) |
+| C | 172.22.159.246 | **Producer only** (no Kafka) | -- |
 
-L2 and L3 are pure Kafka brokers for both topics -- nothing else runs there. Both topics get
-`num_partitions=4`, `replication_factor=2` (the max possible with 2 brokers): Kafka's own
-partitioner spreads messages across the 4 partitions by key (`card_id`), and its leader-election
-spreads partition *leadership* roughly 2-and-2 across L2 and L3 automatically. This isn't
-something you configure in the dataset -- it's purely a topic-creation setting (see
-`producer/create_topic.py`).
+- Single controller: `controller.quorum.voters=1@172.22.134.139:9093`. Node 2 is not a voter; it
+  registers with node 1's controller.
+- Both topics get `num_partitions=4`, `replication_factor=2`. With 2 brokers, every partition has a
+  copy on both; leadership is spread roughly 2-and-2. `min.insync.replicas=1` so a partition stays
+  writable with one replica left.
+- **Kill laptop B, not A.** A holds the controller, and only the controller can elect leaders. Killing
+  B leaves the controller alive, so it moves B's partitions' leadership to A. Killing A takes out
+  the controller too, and nothing can be re-elected until A is back (see the drill below).
+- There is no controller redundancy: a real setup needs 3 controller voters. That needs a 4th machine
+  (or a third node on one of these), which is why this demo only shows *broker* failover.
 
 ## Networking — read first
 
-ZeroTier must be installed and joined **inside each VM**, not only on the host laptop. A VM behind
-the hypervisor's NAT is not reachable at the host's ZeroTier IP. Each VM gets its own ZeroTier IP,
-and each must be authorized in ZeroTier Central. Check: every VM can `ping` every other VM's
-ZeroTier IP.
+ZeroTier (or whatever puts these laptops on 172.22.x.x) must be reachable **from inside each VM**. A
+VM behind the hypervisor's NAT is not reachable at the host's IP; use bridged networking or make sure
+the VM itself has the 172.22.x.x address. Check: every VM can `ping` the other two, and
+`nc -zv 172.22.134.139 9092` / `9093` works from the other laptops once Kafka is up.
 
-Only L2 and L3's IPs are ever hardcoded in config (they're the only brokers). Placeholder IPs used
-in the files (replace everywhere): L2 = 10.147.17.12, L3 = 10.147.17.13. Files to edit:
-`kafka/server-L2.properties`, `kafka/server-L3.properties`, `producer/producer.py`,
-`producer/create_topic.py`, `spark/fraud_job.py`, `spark/batch_job.py`.
+IPs are hardcoded in: `kafka/server-node1.properties`, `kafka/server-node2.properties`,
+`producer/producer.py`, `producer/create_topic.py`, `spark/fraud_job.py`, `spark/batch_job.py`.
+If a laptop's IP changes, edit those (and re-run `setup_kafka.sh` on the Kafka nodes).
 
 ## Which files go where
 
-| VM | Runs | Files |
-|---|---|---|
-| L1 | Producer (raw txns), then Batch Spark #2 (alert summary) | `producer/`, `spark/batch_job.py`, `spark/requirements.txt`, `data/transactions.csv` |
-| L2 | Kafka node 2 | `kafka/server-L2.properties`, `kafka/setup_kafka.sh` |
-| L3 | Kafka node 3 | `kafka/server-L3.properties`, `kafka/setup_kafka.sh` |
-| L4 | Batch Spark #1 (fraud detection + republish) | `spark/fraud_job.py`, `spark/rules.py`, `spark/requirements.txt` |
-| TA / reference only | data generation, answer key, original per-broker split | `ta/`, `postgres/`, `data/answer_key.csv`, `data/part_A.csv`, `data/part_B.csv` |
+| Laptop | Files |
+|---|---|
+| A (broker + controller) | `kafka/server-node1.properties`, `kafka/setup_kafka.sh` |
+| B (broker) | `kafka/server-node2.properties`, `kafka/setup_kafka.sh` |
+| C (producer) | `producer/`, `data/transactions.csv` |
+| Not assigned | `spark/` (batch fraud detection + summary; needs a machine with Java + 4 GB RAM -- optional, can run from C after the producer finishes) |
+| TA / reference only | `ta/`, `postgres/`, `data/answer_key.csv`, `data/part_A.csv`, `data/part_B.csv` |
 
-## Prerequisites / VM sizing
+## Prerequisites
 
-| VM | RAM | Install |
+| Laptop | RAM | Install |
 |---|---|---|
-| L1 | 3–4 GB | Python venv with `pip install -r producer/requirements.txt` (light, for the producer step) **and** `sudo apt install openjdk-17-jdk python3-venv` + `pip install -r spark/requirements.txt` (for the batch step). These two only ever run one at a time -- close the producer process before starting the batch job, so you're never paying for both simultaneously. |
-| L2, L3 | 2–3 GB | Kafka only (`bash setup_kafka.sh 2` / `3`) |
-| L4 | 4 GB+ | `sudo apt install openjdk-17-jdk python3-venv`, then `python3 -m venv venv && . venv/bin/activate && pip install -r spark/requirements.txt`. Internet on first run (Spark fetches the Kafka connector jar). |
+| A, B | 2–3 GB | Kafka only: `bash kafka/setup_kafka.sh 1` (A) / `bash kafka/setup_kafka.sh 2` (B) |
+| C | 1–2 GB | `python3 -m venv venv && . venv/bin/activate && pip install -r producer/requirements.txt` |
 
 Ubuntu 24.04 blocks system-wide `pip install`, so always use a venv.
 
-**Note on L1's RAM**: L1 is now the only VM doing two different jobs. If your VM is tight on RAM
-(under ~4GB total), make sure the producer process has fully exited (`DONE: n/n acked` printed,
-terminal back at a prompt) before starting the Spark JVM for `batch_job.py` -- don't run them
-side by side.
-
 ## Start-up order
 
-Both Spark jobs are one-shot batch reads over a fixed offset range (earliest..latest at the moment
-you run them) -- so order matters: each side must finish producing into a topic before the other
-side reads it, or the reader will just see a partial (or empty) snapshot and exit having missed
-data produced after it started.
-
-1. **L2, L3**, within about a minute of each other (2-node quorum needs both), in a terminal kept open:
+1. **A first**, then **B** (B needs the controller up to register), each in a terminal kept open:
    `KAFKA_HEAP_OPTS='-Xmx512m -Xms512m' /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/fraud.properties`
-2. **L1**: `python create_topic.py` → brokers `[2, 3]`, creates `transactions` and
-   `flagged_transactions`, both 4 partitions / replication factor 2.
-3. **L1**: `python producer.py --csv data/transactions.csv` -- sends all raw txns. Wait for
-   `DONE: n/n acked` before continuing. (`--start-at HH:MM:SS` still works if you want a scheduled
-   demo start, and `--speedup N` to replay faster -- neither is required for syncing with another
-   producer anymore, since L1 is now the only one.)
-4. **L4**: once L1's producer shows `DONE`, `python fraud_job.py` -- reads all of `transactions`
-   in one shot, runs the fraud rules per card, prints alerts, republishes them onto
-   `flagged_transactions`, then exits.
-5. **L1**: once L4's job has finished and exited, `python spark/batch_job.py` -- reads all of
-   `flagged_transactions` in one shot, prints a summary (counts by rule, top offending cards), and
-   writes `spark/flagged_summary/*.csv`.
+2. **C**: `python producer/create_topic.py` → should print `brokers: [1, 2]`, then create `transactions`
+   and `flagged_transactions` (4 partitions, RF 2) and print each partition's leader/replicas/isr.
+   Both brokers should appear as leaders across the partitions.
+3. **C**: `python producer/producer.py --csv data/transactions.csv` -- replays the CSV in event-time
+   order (use `--speedup N` to go faster). Leave it running for the drill.
 
-## What to check during the run
+## What to check
 
-| Where | Command / place | Expect |
+| Where | Command | Expect |
 |---|---|---|
-| L1 | producer terminal | steady `SENT A-000118 card=1009 event=10:07:14 -> p3 off 41` lines, `DONE: n/n acked` |
-| any Kafka VM | `/opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic transactions --from-beginning` | all produced messages, spread across 4 partitions |
-| any Kafka VM | `/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic transactions` | 4 partitions, leaders split across broker 2 and broker 3, 2 replicas (ISR) each |
-| L4 | terminal | `N alerts detected across all cards` + `ALERT R1:A-000118 card 1009 ...` lines, then exits |
-| any Kafka VM | `/opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic flagged_transactions --from-beginning` | alert JSON, one per detected rule violation |
-| L1 | batch job terminal | rule counts, top-10 cards, `wrote per-alert detail to ./flagged_summary/` |
+| C | producer terminal | steady `SENT A-000118 card=1009 event=10:07:14 -> p3 off 41` lines |
+| A or B | `/opt/kafka/bin/kafka-topics.sh --bootstrap-server 172.22.134.139:9092 --describe --topic transactions` | 4 partitions, leaders split across broker 1 and 2, `Replicas: 1,2`, `Isr: 1,2` |
+| A | `/opt/kafka/bin/kafka-metadata-quorum.sh --bootstrap-server 172.22.134.139:9092 describe --status` | `LeaderId: 1`, one voter, broker 2 listed as an observer |
 
-## Failure drills (during the run)
+## Failure drill: kill the broker, watch re-election
 
-- **Broker kill**, on L2 or L3 mid-produce or mid-batch-read: `pkill -9 -f kafka.Kafka`. What
-  happens next is partition-specific, not "the cluster carries on" -- this is worth demoing
-  explicitly:
-  - Each topic has 4 partitions, replication factor 2 -- with only 2 brokers, *every* partition's
-    data lives on *both* brokers (there's nowhere else to put a second copy). What actually splits
-    2-and-2 across L2/L3 is partition **leadership**, decided at topic-creation time.
-  - `controller.quorum.voters` has exactly 2 entries. KRaft needs a strict majority to commit a
-    metadata change, and majority of 2 is 2 -- so losing *either* controller leaves the survivor
-    unable to commit anything, including electing a new leader for the dead broker's partitions.
-  - Net effect: the ~2 partitions the *surviving* broker was already leading keep working
-    immediately (no election needed). The ~2 partitions the *dead* broker was leading go
-    leaderless and stay stuck -- producers/Spark get errors on just those partitions -- until the
-    dead broker comes back and 2-of-2 quorum is restored. The survivor does **not** get promoted
-    to cover them; that promotion itself needs a controller-quorum commit that isn't reachable.
-  - To see it live: kill L2, then run `kafka-topics.sh --describe --topic transactions` against
-    L3 -- 2 partitions will still show a leader, 2 will show `Leader: -1` (none) or unavailable.
-    Compare that to what a 3-node cluster (majority = 2 of 3) would do: it survives losing any
-    single node and re-elects. That contrast is the actual point of this drill.
-- **Rerunning a batch job**: if `fraud_job.py` or `batch_job.py` is interrupted partway, just rerun
-  it -- each is a full, fresh read of its input topic's current offset range. The one thing to
-  watch: rerunning `fraud_job.py` after a prior successful run will **re-publish duplicate alert
-  messages** onto `flagged_transactions` (there's no dedup on that write, unlike the old Postgres
-  upsert). If you need a clean rerun, `--reset` the topics first (below).
+1. With the producer running, note which partitions are led by broker 2 (`--describe` above).
+2. On **B**: `pkill -9 -f kafka.Kafka`.
+3. On **A**, re-run `--describe --topic transactions` (use `--bootstrap-server 172.22.134.139:9092`):
+   - Partitions formerly led by broker 2 now show `Leader: 1`, `Isr: 1` (ISR shrank; replica 2 is
+     still listed under `Replicas` but is out of sync). This is the controller re-electing.
+   - The producer may print a short burst of errors/retries, then resumes on those partitions.
+     `acks=all` still works because `min.insync.replicas=1`.
+4. Restart Kafka on B. Broker 2 rejoins, catches up, and returns to the ISR
+   (`Isr: 1,2`). Leadership does not automatically flip back immediately; it does after the
+   preferred-leader election (default every 5 minutes), or run:
+   `/opt/kafka/bin/kafka-leader-election.sh --bootstrap-server 172.22.134.139:9092 --election-type preferred --all-topic-partitions`
+5. **Contrast (optional)**: kill Kafka on **A** instead. The controller dies with it, so no leader
+   election can happen: partitions that A led stay leaderless until A returns, and B keeps serving
+   only the partitions it already led. That is the cost of a single controller.
 
 ## Reset between practice runs
 
-- L1: `python create_topic.py --reset` (deletes and recreates both topics)
-- L1: `rm -rf spark/flagged_summary`
+- C: `python producer/create_topic.py --reset` (deletes and recreates both topics)
+- If you change `node.id` or the cluster id, wipe `/opt/kafka-data` on that node and re-run `setup_kafka.sh`.
+- If you ran Spark: `rm -rf spark/flagged_summary`
 
 ## New dataset (TA)
 

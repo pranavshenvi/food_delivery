@@ -5,7 +5,7 @@ which runs continuously with a trigger and a checkpoint; this runs once and exit
 import pyspark
 from pyspark.sql import SparkSession, functions as F
 
-BOOTSTRAP = "10.147.17.12:9092,10.147.17.13:9092"  # <-- ZeroTier IPs of L2, L3 VMs (the Kafka brokers)
+BOOTSTRAP = "172.22.134.139:9092,172.22.114.189:9092"  # <-- the two Kafka brokers
 
 ALERT_SCHEMA = "alert_id STRING, rule STRING, card_id INT, txn_id STRING, event_time STRING, details STRING"
 
