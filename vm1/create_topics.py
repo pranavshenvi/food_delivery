@@ -1,25 +1,25 @@
-"""Run once from the producer laptop after both brokers are up.  --reset deletes both topics first (between practice runs).
-Creates `transactions` (raw feed, producer -> Spark) and `flagged_transactions` (alerts, Spark -> producer laptop)."""
+"""Run once from VM1 after both brokers are up.  --reset deletes both topics first (between practice runs).
+Creates `orders` (VM1 -> VM4) and `order_metrics` (VM4 -> VM1): 2 partitions, replication factor 2."""
 import sys
 import time
 
 from confluent_kafka.admin import AdminClient, NewTopic
 
-BOOTSTRAP = "172.22.134.139:9092,172.22.114.189:9092"  # <-- the two Kafka brokers
+BOOTSTRAP = "VM2_IP:9092,VM3_IP:9092"  # <-- the two Kafka brokers
 
 TOPICS = [
-    NewTopic("transactions", num_partitions=4, replication_factor=2, config={"min.insync.replicas": "1"}),
-    NewTopic("flagged_transactions", num_partitions=4, replication_factor=2, config={"min.insync.replicas": "1"}),
+    NewTopic("orders", num_partitions=2, replication_factor=2, config={"min.insync.replicas": "1"}),
+    NewTopic("order_metrics", num_partitions=2, replication_factor=2, config={"min.insync.replicas": "1"}),
 ]
 
 admin = AdminClient({"bootstrap.servers": BOOTSTRAP})
 print("brokers:", sorted(b.id for b in admin.list_topics(timeout=10).brokers.values()))
 
 if "--reset" in sys.argv:
-    for f in admin.delete_topics([t.topic for t in TOPICS]).values():
+    for name, f in admin.delete_topics([t.topic for t in TOPICS]).items():
         try:
             f.result()
-            print("deleted", f)
+            print("deleted", name)
         except Exception as e:
             print("delete:", e)
     time.sleep(3)

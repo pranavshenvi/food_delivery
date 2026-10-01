@@ -1,0 +1,9 @@
+team,input_jsonl_lines,expected_order_metrics_rows,restaurant_summary_rows,city_summary_rows
+team_01,62,44,6,4
+team_02,62,44,6,4
+team_03,62,44,6,4
+team_04,62,44,6,4
+team_05,62,44,6,4
+team_06,62,44,6,4
+team_07,62,44,6,4
+team_08,62,44,6,4

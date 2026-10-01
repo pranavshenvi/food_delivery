@@ -6,3 +6,9 @@ checkpoint/
 .env
 kafka_2.13-*.tgz
 data_demo/
+orders_landed.jsonl
+order_metrics.jsonl
+order_metrics_landed.jsonl
+restaurant_summary.csv
+city_summary.csv
+*.tmp_dir/
