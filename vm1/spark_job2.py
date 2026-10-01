@@ -13,7 +13,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--input", default="order_metrics_landed.jsonl")
 a = ap.parse_args()
 
-spark = SparkSession.builder.master("local[*]").appName("job2-ops-analytics").getOrCreate()
+spark = SparkSession.builder.master("local[*]").config("spark.hadoop.fs.defaultFS", "file:///").appName("job2-ops-analytics").getOrCreate()
 spark.sparkContext.setLogLevel("WARN")
 
 schema = StructType([StructField(c, StringType()) for c in
@@ -22,7 +22,7 @@ schema = StructType([StructField(c, StringType()) for c in
                        ["order_amount", "delivery_fee", "distance_km", "preparation_time_min", "delivery_time_min",
                         "fulfillment_time_min", "delivery_speed_kmph", "delay_min"]])
 
-raw = spark.read.text(a.input).where(F.trim("value") != "")
+raw = spark.read.text("file://" + os.path.abspath(a.input)).where(F.trim("value") != "")
 df = (raw.select(F.from_json("value", schema).alias("r")).select("r.*")
       .where(F.col("order_id").isNotNull())
       .dropDuplicates())  # exact duplicates counted once

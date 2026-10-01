@@ -15,6 +15,7 @@ ap.add_argument("--output", default="order_metrics.jsonl")
 a = ap.parse_args()
 
 spark = (SparkSession.builder.master("local[*]").appName("job1-order-enrichment")
+         .config("spark.hadoop.fs.defaultFS", "file:///")  # local filesystem only, never HDFS
          .config("spark.sql.ansi.enabled", "false")  # bad timestamps/numbers -> null instead of an exception
          .config("spark.sql.session.timeZone", "UTC")
          .getOrCreate())
@@ -25,7 +26,7 @@ STR = ["order_id", "customer_id", "restaurant_id", "delivery_partner_id", "city"
 NUM = ["distance_km", "order_amount", "delivery_fee"]
 schema = StructType([StructField(c, StringType()) for c in STR + TS] + [StructField(c, DoubleType()) for c in NUM])
 
-raw = spark.read.text(a.input).where(F.trim("value") != "")
+raw = spark.read.text("file://" + os.path.abspath(a.input)).where(F.trim("value") != "")
 # malformed JSON -> from_json returns a null struct -> dropped by the order_id check below
 parsed = raw.select(F.from_json("value", schema).alias("r")).select("r.*").where(F.col("order_id").isNotNull())
 
