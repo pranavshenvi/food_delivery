@@ -13,7 +13,7 @@ and the `BOOTSTRAP` line of every script in `vm1/` and `vm4/`. Every VM must be 
 
 ## Setup
 - VM2: `cd kafka && bash setup_kafka.sh 1`    VM3: `cd kafka && bash setup_kafka.sh 2`
-- VM1 / VM4: `sudo apt install -y openjdk-17-jre-headless python3-venv`, then
+- VM1 / VM4: `sudo apt install -y openjdk-11-jre-headless python3-venv`, then
   `python3 -m venv venv && . venv/bin/activate && pip install -r vmX/requirements.txt`
   (if `SPARK_HOME` points at another Spark install, run `unset SPARK_HOME`).
 
