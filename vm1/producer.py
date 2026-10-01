@@ -7,7 +7,7 @@ import time
 
 from confluent_kafka import Producer
 
-BOOTSTRAP = "172.22.134.139:9092,172.22.159.246:9092"  # <-- the two Kafka brokers
+BOOTSTRAP = "172.22.134.139:9092,172.22.144.183:9092"  # <-- the two Kafka brokers
 TOPIC = "orders"
 
 ap = argparse.ArgumentParser()

@@ -12,3 +12,4 @@ order_metrics_landed.jsonl
 restaurant_summary.csv
 city_summary.csv
 *.tmp_dir/
+!data/answer_keys/**

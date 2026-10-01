@@ -1,0 +1,7 @@
+restaurant_id,order_count,avg_order_amount,avg_preparation_time_min,avg_delivery_time_min,delayed_order_count,delay_rate_pct
+R01,8,548.5,13.12,22.0,4,50.0
+R02,8,539.25,13.38,27.0,8,100.0
+R03,7,664.0,13.86,32.0,4,57.14
+R04,7,639.57,12.14,37.0,7,100.0
+R05,7,615.14,12.0,42.0,3,42.86
+R06,7,712.14,13.43,47.0,7,100.0

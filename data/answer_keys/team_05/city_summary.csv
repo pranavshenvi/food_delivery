@@ -1,0 +1,5 @@
+city,order_count,avg_order_amount,avg_delivery_time_min,delayed_order_count,delay_rate_pct
+Bengaluru,16,551.75,25.5,12,75.0
+Mumbai,14,591.36,35.5,11,78.57
+Pune,7,676.14,43.0,3,42.86
+Hyderabad,7,651.71,18.0,7,100.0

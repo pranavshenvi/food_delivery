@@ -4,10 +4,10 @@
 |---|---|---|
 | VM1 (172.22.114.189) | Producer + final consumer + Spark Job 2 | `vm1/`, `data/datasets/<team>/orders.jsonl` |
 | VM2 (172.22.134.139) | Kafka broker 1 + KRaft controller | `kafka/server-node1.properties`, `kafka/setup_kafka.sh` |
-| VM3 (172.22.159.246) | Kafka broker 2 | `kafka/server-node2.properties`, `kafka/setup_kafka.sh` |
+| VM3 (172.22.144.183) | Kafka broker 2 | `kafka/server-node2.properties`, `kafka/setup_kafka.sh` |
 | VM4 (172.22.243.59) | Consumer + Spark Job 1 + producer | `vm4/` |
 
-IPs live in: `kafka/server-node1.properties`, `kafka/server-node2.properties` (`172.22.134.139`, `172.22.159.246`),
+IPs live in: `kafka/server-node1.properties`, `kafka/server-node2.properties` (`172.22.134.139`, `172.22.144.183`),
 and the `BOOTSTRAP` line of every script in `vm1/` and `vm4/`. Every VM must be able to reach VM2 and VM3 on 9092
 (and VM3 -> VM2 on 9093). Topics: `orders` and `order_metrics`, 2 partitions, replication factor 2, same cluster.
 
