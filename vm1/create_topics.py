@@ -5,7 +5,7 @@ import time
 
 from confluent_kafka.admin import AdminClient, NewTopic
 
-BOOTSTRAP = "VM2_IP:9092,VM3_IP:9092"  # <-- the two Kafka brokers
+BOOTSTRAP = "172.22.134.139:9092,172.22.159.246:9092"  # <-- the two Kafka brokers
 
 TOPICS = [
     NewTopic("orders", num_partitions=2, replication_factor=2, config={"min.insync.replicas": "1"}),
